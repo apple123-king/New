@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "cat docs/harness/progress.md 2>/dev/null || echo '[Harness] No progress file found — new session'",
+        "windows": "if exist docs\\harness\\progress.md (type docs\\harness\\progress.md) else (echo [Harness] No progress file found — new session)",
+        "timeout": 10
+      }
+    ]
+  }
+}

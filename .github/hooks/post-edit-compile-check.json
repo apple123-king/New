@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": {
+          "toolName": "edit_file|replace_string_in_file|multi_replace_string_in_file|create_file"
+        },
+        "type": "command",
+        "command": "python -c \"import unity_skills; r=unity_skills.call_skill('debug_check_compilation'); print('[Harness]', 'Compilation OK' if r.get('success') else f'Compilation FAILED: {r}')\"",
+        "windows": "python -c \"import unity_skills; r=unity_skills.call_skill('debug_check_compilation'); print('[Harness]', 'Compilation OK' if r.get('success') else f'Compilation FAILED: {r}')\"",
+        "timeout": 30
+      }
+    ]
+  }
+}

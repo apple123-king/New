@@ -19,6 +19,7 @@ namespace Game.SceneIntegration
 
         private readonly List<GameObject> brickObjects = new List<GameObject>();
         private readonly DebugHudPresenter hudPresenter = new DebugHudPresenter();
+        private readonly SceneCommandBoundary commandBoundary = new SceneCommandBoundary();
 
         private CoreLoopController coreLoop;
         private ShooterController shooter;
@@ -31,6 +32,9 @@ namespace Game.SceneIntegration
         private CoreLoopPhase previousPhase;
         private int observedWallResetVersion;
         private float shotFeedbackSeconds;
+        private GamePresentationMode presentationMode = GamePresentationMode.Secure;
+
+        public GamePresentationMode PresentationMode => presentationMode;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
@@ -60,11 +64,12 @@ namespace Game.SceneIntegration
 
         private void Update()
         {
+            HandlePresentationModeToggle();
             coreLoop.Tick(Time.deltaTime);
             SyncRoundReset();
             HandleDeploymentLock();
-            HandleDodgerInput();
-            HandleShooterInput();
+            HandleDodgerCommand();
+            HandleAttackerCommand();
             SyncDodgerView();
             SyncCameras();
 
@@ -77,22 +82,32 @@ namespace Game.SceneIntegration
         private void OnGUI()
         {
             CoreLoopSnapshot snapshot = coreLoop.Snapshot;
-            DebugHudState attackerHud = hudPresenter.BuildAttackerHud(snapshot);
-            DebugHudState dodgerHud = hudPresenter.BuildDodgerHud(snapshot);
+            RoleHudView attackerHud = hudPresenter.BuildHud(snapshot, PlayerViewRole.Attacker, presentationMode);
+            RoleHudView dodgerHud = hudPresenter.BuildHud(snapshot, PlayerViewRole.Dodger, presentationMode);
 
             GUI.Box(new Rect(12f, 12f, 360f, 158f), "Attacker");
             GUI.Label(new Rect(28f, 38f, 330f, 24f), FormatHud(attackerHud));
-            GUI.Label(new Rect(28f, 62f, 330f, 24f), $"Phase: {snapshot.Phase}  Scope: {(shooter.IsScoped ? "ON" : "OFF")}  CanFire: {shooter.CanFire}");
+            if (attackerHud.ShowScopeStatus)
+            {
+                GUI.Label(new Rect(28f, 62f, 330f, 24f), $"Phase: {snapshot.Phase}  Scope: {(shooter.IsScoped ? "ON" : "OFF")}  CanFire: {shooter.CanFire}");
+            }
             GUI.Label(new Rect(28f, 86f, 330f, 24f), "Hold Right Mouse to scope, Left Mouse or Space to fire.");
             GUI.Label(new Rect(28f, 110f, 330f, 24f), snapshot.StalemateWarningActive ? "Stalemate warning: fire soon." : "Stalemate warning: none.");
-            GUI.Label(new Rect(28f, 134f, 330f, 24f), shotFeedbackSeconds > 0f ? wallShotResolver.LastShotSummary : string.Empty);
+            if (attackerHud.ShowShotSummary)
+            {
+                GUI.Label(new Rect(28f, 134f, 330f, 24f), shotFeedbackSeconds > 0f ? wallShotResolver.LastShotSummary : string.Empty);
+            }
 
             float rightX = Screen.width - 372f;
             GUI.Box(new Rect(rightX, 12f, 360f, 134f), "Dodger");
             GUI.Label(new Rect(rightX + 16f, 38f, 330f, 24f), FormatHud(dodgerHud));
-            GUI.Label(new Rect(rightX + 16f, 62f, 330f, 24f), $"Pose: {dodger.Pose}  Position: {dodger.Position.x:0.0}, {dodger.Position.z:0.0}");
+            if (dodgerHud.ShowDodgerState)
+            {
+                GUI.Label(new Rect(rightX + 16f, 62f, 330f, 24f), $"Pose: {dodger.Pose}  Position: {dodger.Position.x:0.0}, {dodger.Position.z:0.0}");
+            }
             GUI.Label(new Rect(rightX + 16f, 86f, 330f, 24f), "Move: WASD / Arrows. Pose: 1 Stand, 2 Crouch, 3 Prone.");
             GUI.Label(new Rect(rightX + 16f, 110f, 330f, 24f), dodger.HasDeploymentLock ? $"Locked start: {dodger.LockedDeploymentPosition.x:0.0}, {dodger.LockedDeploymentPosition.z:0.0}" : "Deployment start not locked.");
+            GUI.Label(new Rect(Screen.width * 0.5f - 140f, 12f, 280f, 24f), $"Presentation: {presentationMode}  Toggle: F1");
 
             if (snapshot.MatchOver)
             {
@@ -153,86 +168,91 @@ namespace Game.SceneIntegration
             previousPhase = currentPhase;
         }
 
-        private void HandleDodgerInput()
+        public void SetPresentationMode(GamePresentationMode mode)
         {
-            Vector3 input = Vector3.zero;
+            presentationMode = mode;
+        }
+
+        private void HandlePresentationModeToggle()
+        {
+            if (Input.GetKeyDown(KeyCode.F1))
+            {
+                presentationMode = presentationMode == GamePresentationMode.Secure
+                    ? GamePresentationMode.Debug
+                    : GamePresentationMode.Secure;
+            }
+        }
+
+        private void HandleDodgerCommand()
+        {
+            commandBoundary.ApplyDodgerCommand(dodger, ReadDodgerCommand(), Time.deltaTime);
+        }
+
+        private void HandleAttackerCommand()
+        {
+            ShooterShotResult? result = commandBoundary.ApplyAttackerCommand(
+                shooter,
+                coreLoop.Snapshot,
+                ReadAttackerCommand(),
+                Time.deltaTime,
+                attackCamera.transform.position,
+                attackCamera.transform.forward,
+                Random.insideUnitSphere * 0.08f);
+
+            if (result.HasValue)
+            {
+                ShooterShotResult shot = result.Value;
+                wallShotResolver.LastShotSummary = $"Shot: wall={shot.HitWall}, dodger={shot.HitDodger}, bricks={shot.DestroyedBrickCount}";
+                shotFeedbackSeconds = 2.5f;
+            }
+        }
+
+        private static DodgerCommand ReadDodgerCommand()
+        {
+            float x = 0f;
+            float z = 0f;
             if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
             {
-                input.x -= 1f;
+                x -= 1f;
             }
 
             if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
             {
-                input.x += 1f;
+                x += 1f;
             }
 
             if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
             {
-                input.z += 1f;
+                z += 1f;
             }
 
             if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
             {
-                input.z -= 1f;
+                z -= 1f;
             }
 
-            if (input.sqrMagnitude > 0f)
-            {
-                Vector3 delta = input.normalized * 3.2f * Time.deltaTime;
-                Vector3 next = dodger.Position + delta;
-                next.x = Mathf.Clamp(next.x, -4.8f, 4.8f);
-                next.z = Mathf.Clamp(next.z, 1.3f, 7.2f);
-                dodger.Move(next - dodger.Position);
-            }
-
+            DodgerPose? requestedPose = null;
             if (Input.GetKeyDown(KeyCode.Alpha1))
             {
-                dodger.SetPose(DodgerPose.Standing);
+                requestedPose = DodgerPose.Standing;
             }
             else if (Input.GetKeyDown(KeyCode.Alpha2))
             {
-                dodger.SetPose(DodgerPose.Crouching);
+                requestedPose = DodgerPose.Crouching;
             }
             else if (Input.GetKeyDown(KeyCode.Alpha3))
             {
-                dodger.SetPose(DodgerPose.Prone);
+                requestedPose = DodgerPose.Prone;
             }
+
+            return new DodgerCommand(x, z, requestedPose);
         }
 
-        private void HandleShooterInput()
+        private static AttackerCommand ReadAttackerCommand()
         {
-            if (coreLoop.Snapshot.Phase != CoreLoopPhase.Attack)
-            {
-                shooter.CloseScope();
-                return;
-            }
-
             bool scopeHeld = Input.GetMouseButton(1) || Input.GetKey(KeyCode.LeftShift);
-            if (scopeHeld)
-            {
-                Vector3 direction = attackCamera.transform.forward;
-                if (!shooter.IsScoped)
-                {
-                    shooter.OpenScope(attackCamera.transform.position, direction);
-                }
-                else
-                {
-                    shooter.UpdateAimRay(attackCamera.transform.position, direction);
-                }
-
-                shooter.Tick(Time.deltaTime);
-            }
-            else if (shooter.IsScoped)
-            {
-                shooter.CloseScope();
-            }
-
-            if (shooter.CanFire && (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space)))
-            {
-                ShooterShotResult result = shooter.Fire(Random.insideUnitSphere * 0.08f);
-                wallShotResolver.LastShotSummary = $"Shot: wall={result.HitWall}, dodger={result.HitDodger}, bricks={result.DestroyedBrickCount}";
-                shotFeedbackSeconds = 2.5f;
-            }
+            bool firePressed = Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space);
+            return new AttackerCommand(scopeHeld, firePressed);
         }
 
         private void SyncDodgerView()
@@ -270,11 +290,11 @@ namespace Game.SceneIntegration
             observedWallResetVersion = resetVersion;
         }
 
-        private static string FormatHud(DebugHudState hud)
+        private static string FormatHud(RoleHudView hud)
         {
             string bullets = hud.ShowBullets ? $" Bullets:{hud.BulletsRemaining}" : string.Empty;
             string mask = hud.ShowDeploymentMask ? " DeploymentMask" : string.Empty;
-            return $"Score A:{hud.PlayerAScore} B:{hud.PlayerBScore} Round:{hud.MajorRoundNumber} Attacker:{hud.CurrentAttacker}{bullets} Deploy:{hud.DeploymentSecondsRemaining:0.0}{mask}";
+            return $"{hud.ViewRole} [{hud.PresentationMode}] Score A:{hud.PlayerAScore} B:{hud.PlayerBScore} Round:{hud.MajorRoundNumber} Attacker:{hud.CurrentAttacker}{bullets} Deploy:{hud.DeploymentSecondsRemaining:0.0}{mask}";
         }
 
         private static GameObject CreateCube(string name, Transform parent, Vector3 position, Vector3 scale, Color color)

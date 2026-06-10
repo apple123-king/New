@@ -52,25 +52,41 @@ public sealed class DodgerAndUITests
         DebugHudPresenter presenter = new DebugHudPresenter();
         CoreLoopSnapshot snapshot = CreateSnapshot(CoreLoopPhase.Deployment, bulletsRemaining: 3);
 
-        DebugHudState hud = presenter.BuildAttackerHud(snapshot);
+        RoleHudView hud = presenter.BuildHud(snapshot, PlayerViewRole.Attacker, GamePresentationMode.Secure);
 
         Assert.IsTrue(hud.ShowBullets);
         Assert.IsTrue(hud.ShowDeploymentMask);
+        Assert.IsTrue(hud.ShowScopeStatus);
         Assert.AreEqual(3, hud.BulletsRemaining);
         Assert.AreEqual(PlayerSide.PlayerA, hud.CurrentAttacker);
     }
 
     [Test]
-    public void BuildDodgerHud_HidesBulletsAndDeploymentMask()
+    public void BuildDodgerHud_SecureMode_HidesBulletsAndDebugOnlyState()
     {
         DebugHudPresenter presenter = new DebugHudPresenter();
         CoreLoopSnapshot snapshot = CreateSnapshot(CoreLoopPhase.Deployment, bulletsRemaining: 3);
 
-        DebugHudState hud = presenter.BuildDodgerHud(snapshot);
+        RoleHudView hud = presenter.BuildHud(snapshot, PlayerViewRole.Dodger, GamePresentationMode.Secure);
 
         Assert.IsFalse(hud.ShowBullets);
         Assert.IsFalse(hud.ShowDeploymentMask);
+        Assert.IsFalse(hud.ShowShotSummary);
         Assert.AreEqual(0, hud.BulletsRemaining);
+    }
+
+    [Test]
+    public void BuildDodgerHud_DebugMode_ExposesSharedDebugInfo()
+    {
+        DebugHudPresenter presenter = new DebugHudPresenter();
+        CoreLoopSnapshot snapshot = CreateSnapshot(CoreLoopPhase.Deployment, bulletsRemaining: 3);
+
+        RoleHudView hud = presenter.BuildHud(snapshot, PlayerViewRole.Dodger, GamePresentationMode.Debug);
+
+        Assert.IsTrue(hud.ShowBullets);
+        Assert.IsTrue(hud.ShowDeploymentMask);
+        Assert.IsTrue(hud.ShowShotSummary);
+        Assert.AreEqual(3, hud.BulletsRemaining);
     }
 
     private static CoreLoopSnapshot CreateSnapshot(CoreLoopPhase phase, int bulletsRemaining)

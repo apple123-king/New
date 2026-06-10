@@ -32,6 +32,24 @@ namespace Game
     }
 
     /// <summary>
+    /// 运行时展示模式。Secure 为正式信息保密模式，Debug 为全信息调试模式。
+    /// </summary>
+    public enum GamePresentationMode
+    {
+        Secure = 0,
+        Debug = 1
+    }
+
+    /// <summary>
+    /// 当前 HUD 和视图所服务的角色。
+    /// </summary>
+    public enum PlayerViewRole
+    {
+        Attacker = 0,
+        Dodger = 1
+    }
+
+    /// <summary>
     /// CoreLoop 对外暴露的只读状态快照。
     /// </summary>
     public readonly struct CoreLoopSnapshot
@@ -103,5 +121,67 @@ namespace Game
     public interface ICoreLoopReadOnly
     {
         CoreLoopSnapshot Snapshot { get; }
+    }
+
+    /// <summary>
+    /// 供不同角色视图消费的最小 HUD 只读数据。
+    /// </summary>
+    public readonly struct RoleHudView
+    {
+        public RoleHudView(
+            PlayerViewRole viewRole,
+            GamePresentationMode presentationMode,
+            int playerAScore,
+            int playerBScore,
+            int majorRoundNumber,
+            PlayerSide currentAttacker,
+            int bulletsRemaining,
+            float deploymentSecondsRemaining,
+            bool showBullets,
+            bool showDeploymentMask,
+            bool showScopeStatus,
+            bool showShotSummary,
+            bool showDodgerState)
+        {
+            ViewRole = viewRole;
+            PresentationMode = presentationMode;
+            PlayerAScore = playerAScore;
+            PlayerBScore = playerBScore;
+            MajorRoundNumber = majorRoundNumber;
+            CurrentAttacker = currentAttacker;
+            BulletsRemaining = bulletsRemaining;
+            DeploymentSecondsRemaining = deploymentSecondsRemaining;
+            ShowBullets = showBullets;
+            ShowDeploymentMask = showDeploymentMask;
+            ShowScopeStatus = showScopeStatus;
+            ShowShotSummary = showShotSummary;
+            ShowDodgerState = showDodgerState;
+        }
+
+        public PlayerViewRole ViewRole { get; }
+
+        public GamePresentationMode PresentationMode { get; }
+
+        public int PlayerAScore { get; }
+
+        public int PlayerBScore { get; }
+
+        public int MajorRoundNumber { get; }
+
+        public PlayerSide CurrentAttacker { get; }
+
+        public int BulletsRemaining { get; }
+
+        public float DeploymentSecondsRemaining { get; }
+
+        public bool ShowBullets { get; }
+
+        public bool ShowDeploymentMask { get; }
+
+        public bool ShowScopeStatus { get; }
+
+        public bool ShowShotSummary { get; }
+
+        public bool ShowDodgerState { get; }
     }
 }
